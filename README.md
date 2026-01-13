@@ -4,11 +4,11 @@
 
 ## Сервисы
 
-| Сервис | Порт | Описание |
-|--------|------|----------|
-| PostgreSQL 17 | 5432 | Базы данных для user_service и profile_service |
-| RabbitMQ | 5672 | Брокер сообщений (AMQP) |
-| RabbitMQ Management | 15672 | Web UI для управления RabbitMQ |
+| Сервис | Описание |
+|--------|----------|
+| PostgreSQL 17 | Базы данных для user_service и profile_service |
+| RabbitMQ  | Брокер сообщений (AMQP) |
+| RabbitMQ Management | Web UI для управления RabbitMQ |
 
 ## Быстрый старт
 
