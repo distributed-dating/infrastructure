@@ -1,34 +1,42 @@
 services:
   postgres:
     image: postgres:17
-    container_name: auth_postgres
+    container_name: infra_postgres
     restart: unless-stopped
 
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # Переменные для init-скрипта (создание баз данных)
+      USER_SERVICE_DB_NAME: ${USER_SERVICE_DB_NAME}
+      USER_SERVICE_DB_USER: ${USER_SERVICE_DB_USER}
+      USER_SERVICE_DB_PASSWORD: ${USER_SERVICE_DB_PASSWORD}
+      PROFILE_SERVICE_DB_NAME: ${PROFILE_SERVICE_DB_NAME}
+      PROFILE_SERVICE_DB_USER: ${PROFILE_SERVICE_DB_USER}
+      PROFILE_SERVICE_DB_PASSWORD: ${PROFILE_SERVICE_DB_PASSWORD}
 
     ports:
       - "5432:5432"
 
     volumes:
       - pg_data:/var/lib/postgresql/data
+      - ./postgres/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
 
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
       interval: 5s
       timeout: 5s
       retries: 10
 
   rabbitmq:
     image: rabbitmq:3-management
-    container_name: auth_rabbitmq
+    container_name: infra_rabbitmq
     restart: unless-stopped
 
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "-rabbitmq_management load_definitions \"/etc/rabbitmq/definitions.json\""
 
     ports:
       - "5672:5672"   # AMQP порт
@@ -36,6 +44,7 @@ services:
 
     volumes:
       - rmq_data:/var/lib/rabbitmq
+      - ./rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
 
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]

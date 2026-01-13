@@ -1,0 +1,111 @@
+{
+  "users": [
+    {
+      "name": "guest",
+      "password": "guest",
+      "tags": ["administrator"]
+    }
+  ],
+  "vhosts": [
+    {
+      "name": "/"
+    }
+  ],
+  "permissions": [
+    {
+      "user": "guest",
+      "vhost": "/",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    }
+  ],
+  "exchanges": [
+    {
+      "name": "auth.events",
+      "vhost": "/",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "auth.events.dlx",
+      "vhost": "/",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "queues": [
+    {
+      "name": "profile_service.user_events",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-dead-letter-exchange": "auth.events.dlx"
+      }
+    },
+    {
+      "name": "profile_service.user_events.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    }
+  ],
+  "bindings": [
+    {
+      "source": "auth.events",
+      "vhost": "/",
+      "destination": "profile_service.user_events",
+      "destination_type": "queue",
+      "routing_key": "user.created",
+      "arguments": {}
+    },
+    {
+      "source": "auth.events",
+      "vhost": "/",
+      "destination": "profile_service.user_events",
+      "destination_type": "queue",
+      "routing_key": "user.activated",
+      "arguments": {}
+    },
+    {
+      "source": "auth.events",
+      "vhost": "/",
+      "destination": "profile_service.user_events",
+      "destination_type": "queue",
+      "routing_key": "user.deactivated",
+      "arguments": {}
+    },
+    {
+      "source": "auth.events.dlx",
+      "vhost": "/",
+      "destination": "profile_service.user_events.dlq",
+      "destination_type": "queue",
+      "routing_key": "user.created",
+      "arguments": {}
+    },
+    {
+      "source": "auth.events.dlx",
+      "vhost": "/",
+      "destination": "profile_service.user_events.dlq",
+      "destination_type": "queue",
+      "routing_key": "user.activated",
+      "arguments": {}
+    },
+    {
+      "source": "auth.events.dlx",
+      "vhost": "/",
+      "destination": "profile_service.user_events.dlq",
+      "destination_type": "queue",
+      "routing_key": "user.deactivated",
+      "arguments": {}
+    }
+  ]
+}
