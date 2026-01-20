@@ -4,30 +4,34 @@
 
 ## Сервисы
 
-| Сервис | Описание |
-|--------|----------|
-| nginx | API Gateway с балансировкой нагрузки, rate limiting и JWT аутентификацией |
-| JWT Validator (Python) | Микросервис для проверки JWT токенов |
-| PostgreSQL 17 | Базы данных для user_service и profile_service |
-| RabbitMQ  | Брокер сообщений (AMQP) |
-| RabbitMQ Management | Web UI для управления RabbitMQ |
+| Сервис | Описание | Порт |
+|--------|----------|------|
+| nginx | API Gateway с балансировкой нагрузки, rate limiting и JWT аутентификацией | 8080 |
+| JWT Validator (Python) | Микросервис для проверки JWT токенов | 9090 (внутренний) |
+| PostgreSQL 17 | Базы данных для user_service и profile_service | 5432 |
+| RabbitMQ  | Брокер сообщений (AMQP) | 5672 |
+| RabbitMQ Management | Web UI для управления RabbitMQ | 15672 |
 
 ## Быстрый старт
 
 ```bash
-# Загрузить переменные окружения
-source .envrc
+# 1. Создать файл .env из примера и заполнить переменные
+cp env-example.txt .env
+# Отредактируй .env и заполни необходимые значения
 
-# Запустить инфраструктуру
+# 2. Запустить инфраструктуру
 docker-compose up -d
 
-# Проверить статус
+# 3. Проверить статус
 docker-compose ps
+
+# 4. Проверить логи (опционально)
+docker-compose logs -f
 ```
 
 ## API Gateway (nginx)
 
-**URL:** http://localhost
+**URL:** http://localhost:8080
 
 nginx работает как API Gateway, обеспечивая балансировку нагрузки, rate limiting и JWT аутентификацию для всех API запросов.
 
@@ -37,8 +41,7 @@ nginx работает как API Gateway, обеспечивая баланси
 |----------|----------|----------------|
 | `GET /health` | Health check | Не требуется |
 | `POST /api/v1/auth` | Аутентификация (получение JWT токена) | Не требуется |
-| `/api/v1/users/*` | API user_service | JWT токен (Bearer) |
-| `/api/v1/profiles/*` | API profile_service | JWT токен (Bearer) |
+| `/api/v1/users/*` | API auth_service | JWT токен (Bearer) |
 
 ### JWT Аутентификация
 
@@ -53,17 +56,17 @@ Authorization: Bearer <token>
 
 Применяются следующие лимиты:
 - **Глобальный лимит**: 10 запросов/сек на IP (по умолчанию)
-- **user_service**: 20 запросов/сек на IP
-- **profile_service**: 20 запросов/сек на IP
-- **auth endpoint**: 5 запросов/сек на IP
+- **auth_service**: 20 запросов/сек на IP
+- **auth endpoint** (`/api/v1/auth`): 5 запросов/сек на IP
 
 При превышении лимита возвращается HTTP 429 (Too Many Requests).
 
 ### Балансировка нагрузки
 
 API Gateway распределяет запросы между инстансами сервисов через upstream блоки:
-- `user_service`: порт 8001
-- `profile_service`: порт 8002
+- `auth_service`: `host.docker.internal:8000` (внешний сервис, должен работать на хосте)
+
+**Важно:** Убедись, что `auth_service` запущен на хосте на порту 8000, так как nginx использует `host.docker.internal` для доступа к сервисам вне Docker.
 
 Можно добавить несколько инстансов для балансировки, отредактировав `nginx/conf.d/upstreams.conf`.
 
@@ -71,15 +74,14 @@ API Gateway распределяет запросы между инстанса�
 
 Конфигурационные файлы находятся в директории `nginx/`:
 - `nginx/nginx.conf` - основная конфигурация
-- `nginx/conf.d/api.conf` - маршрутизация API
-- `nginx/conf.d/upstreams.conf` - upstream серверы
+- `nginx/conf.d/api.conf` - маршрутизация API (включая JWT аутентификацию через `auth_request`)
+- `nginx/conf.d/upstreams.conf` - upstream серверы для балансировки нагрузки
 - `nginx/conf.d/rate-limit.conf` - настройки rate limiting
-- `nginx/conf.d/jwt-auth.conf` - конфигурация auth_request для JWT
 
 Python сервис для проверки JWT:
 - `nginx/auth/jwt_validator.py` - Python скрипт для проверки JWT токенов
 - `nginx/auth/Dockerfile` - Dockerfile для JWT validator сервиса
-- `nginx/auth/requirements.txt` - Python зависимости (PyJWT)
+- `nginx/auth/pyproject.toml` и `nginx/auth/requirements.txt` - Python зависимости (PyJWT)
 
 ## Базы данных PostgreSQL
 
@@ -91,11 +93,13 @@ Python сервис для проверки JWT:
 Подключение:
 ```bash
 # user_db
-psql -h localhost -U user_service -d user_db
+psql -h localhost -p 5432 -U user_service -d user_db
 
 # profile_db
-psql -h localhost -U profile_service -d profile_db
+psql -h localhost -p 5432 -U profile_service -d profile_db
 ```
+
+Пароли указываются при запросе или через переменную окружения `PGPASSWORD`.
 
 ## RabbitMQ
 
@@ -152,7 +156,7 @@ user_service                         profile_service
 
 ## Переменные окружения
 
-Скопируй `env-example.txt` в `.env` или используй `.envrc` с [direnv](https://direnv.net/).
+Создай файл `.env` из `env-example.txt` и заполни необходимые переменные. Для управления переменными окружения можно использовать [direnv](https://direnv.net/) с файлом `.envrc`.
 
 ```bash
 # PostgreSQL
@@ -177,17 +181,18 @@ RABBITMQ_PASSWORD=guest
 RABBITMQ_EXCHANGE=auth.events
 
 # Nginx API Gateway
-USER_SERVICE_PORT=8001
-PROFILE_SERVICE_PORT=8002
+# Порт nginx: 8080 (внешний) -> 80 (внутренний)
 
 # JWT Configuration
+JWT_VALIDATOR_PORT=9090
 JWT_SECRET=your-secret-key-here
 JWT_ALGORITHM=HS256
 
 # Rate Limiting
+# Примечание: nginx не поддерживает переменные окружения в limit_req_zone.
+# Для изменения лимитов отредактируйте файл nginx/conf.d/rate-limit.conf
 RATE_LIMIT_GLOBAL=10r/s
-RATE_LIMIT_USER_SERVICE=20r/s
-RATE_LIMIT_PROFILE_SERVICE=20r/s
+RATE_LIMIT_AUTH_SERVICE=20r/s
 RATE_LIMIT_AUTH=5r/s
 ```
 
