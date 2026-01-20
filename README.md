@@ -6,6 +6,8 @@
 
 | Сервис | Описание |
 |--------|----------|
+| nginx | API Gateway с балансировкой нагрузки, rate limiting и JWT аутентификацией |
+| JWT Validator (Python) | Микросервис для проверки JWT токенов |
 | PostgreSQL 17 | Базы данных для user_service и profile_service |
 | RabbitMQ  | Брокер сообщений (AMQP) |
 | RabbitMQ Management | Web UI для управления RabbitMQ |
@@ -22,6 +24,62 @@ docker-compose up -d
 # Проверить статус
 docker-compose ps
 ```
+
+## API Gateway (nginx)
+
+**URL:** http://localhost
+
+nginx работает как API Gateway, обеспечивая балансировку нагрузки, rate limiting и JWT аутентификацию для всех API запросов.
+
+### Endpoints
+
+| Endpoint | Описание | Аутентификация |
+|----------|----------|----------------|
+| `GET /health` | Health check | Не требуется |
+| `POST /api/v1/auth` | Аутентификация (получение JWT токена) | Не требуется |
+| `/api/v1/users/*` | API user_service | JWT токен (Bearer) |
+| `/api/v1/profiles/*` | API profile_service | JWT токен (Bearer) |
+
+### JWT Аутентификация
+
+Все защищенные endpoints требуют JWT токен в заголовке `Authorization`:
+```
+Authorization: Bearer <token>
+```
+
+Токен проверяется через Python микросервис `jwt_validator`, который использует библиотеку PyJWT для проверки подписи и expiration токена. Сервис работает на порту 9090 и вызывается nginx через `auth_request` модуль.
+
+### Rate Limiting
+
+Применяются следующие лимиты:
+- **Глобальный лимит**: 10 запросов/сек на IP (по умолчанию)
+- **user_service**: 20 запросов/сек на IP
+- **profile_service**: 20 запросов/сек на IP
+- **auth endpoint**: 5 запросов/сек на IP
+
+При превышении лимита возвращается HTTP 429 (Too Many Requests).
+
+### Балансировка нагрузки
+
+API Gateway распределяет запросы между инстансами сервисов через upstream блоки:
+- `user_service`: порт 8001
+- `profile_service`: порт 8002
+
+Можно добавить несколько инстансов для балансировки, отредактировав `nginx/conf.d/upstreams.conf`.
+
+### Конфигурация
+
+Конфигурационные файлы находятся в директории `nginx/`:
+- `nginx/nginx.conf` - основная конфигурация
+- `nginx/conf.d/api.conf` - маршрутизация API
+- `nginx/conf.d/upstreams.conf` - upstream серверы
+- `nginx/conf.d/rate-limit.conf` - настройки rate limiting
+- `nginx/conf.d/jwt-auth.conf` - конфигурация auth_request для JWT
+
+Python сервис для проверки JWT:
+- `nginx/auth/jwt_validator.py` - Python скрипт для проверки JWT токенов
+- `nginx/auth/Dockerfile` - Dockerfile для JWT validator сервиса
+- `nginx/auth/requirements.txt` - Python зависимости (PyJWT)
 
 ## Базы данных PostgreSQL
 
@@ -117,6 +175,20 @@ RABBITMQ_PORT=5672
 RABBITMQ_USER=guest
 RABBITMQ_PASSWORD=guest
 RABBITMQ_EXCHANGE=auth.events
+
+# Nginx API Gateway
+USER_SERVICE_PORT=8001
+PROFILE_SERVICE_PORT=8002
+
+# JWT Configuration
+JWT_SECRET=your-secret-key-here
+JWT_ALGORITHM=HS256
+
+# Rate Limiting
+RATE_LIMIT_GLOBAL=10r/s
+RATE_LIMIT_USER_SERVICE=20r/s
+RATE_LIMIT_PROFILE_SERVICE=20r/s
+RATE_LIMIT_AUTH=5r/s
 ```
 
 ## Команды

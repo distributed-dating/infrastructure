@@ -52,6 +52,47 @@ services:
       timeout: 5s
       retries: 5
 
+  jwt_validator:
+    build:
+      context: ./nginx/auth
+      dockerfile: Dockerfile
+    container_name: infra_jwt_validator
+    restart: unless-stopped
+
+    environment:
+      JWT_VALIDATOR_PORT: ${JWT_VALIDATOR_PORT:-9090}
+      JWT_SECRET: ${JWT_SECRET:-}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import http.client; conn = http.client.HTTPConnection('localhost', 9090); conn.request('GET', '/'); r = conn.getresponse(); exit(0 if r.status in [200, 401] else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  nginx:
+    image: nginx:alpine
+    container_name: infra_nginx
+    restart: unless-stopped
+
+    ports:
+      - "8080:80"
+
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+
+    depends_on:
+      - postgres
+      - rabbitmq
+      - jwt_validator
+
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
 volumes:
   pg_data:
   rmq_data:
